@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Shadow Warriors — First Playable Prototype</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#101a18;font-family:system-ui,Arial;color:#fff;touch-action:none}
+  canvas{display:block}
+  #hud{position:fixed;inset:0;pointer-events:none}
+  #title{position:absolute;top:12px;left:12px;font-weight:800;letter-spacing:2px;text-shadow:0 2px 6px #000;font-size:18px}
+  #stats{position:absolute;top:42px;left:12px;background:#07110dcc;padding:8px 10px;border:1px solid #ffffff30;border-radius:10px;font-size:13px;line-height:1.6}
+  #help{position:absolute;top:12px;right:12px;max-width:155px;text-align:right;font-size:12px;color:#e4eee8;text-shadow:0 2px 5px #000}
+  #joy{position:absolute;left:22px;bottom:25px;width:120px;height:120px;border-radius:50%;background:#ffffff18;border:2px solid #ffffff55;pointer-events:auto;touch-action:none}
+  #stick{position:absolute;left:36px;top:36px;width:44px;height:44px;border-radius:50%;background:#d9e6dccc;border:2px solid white}
+  .action{position:absolute;right:24px;bottom:36px;width:82px;height:82px;border-radius:50%;border:2px solid #fff9;background:#762a2ae8;color:white;font-weight:800;font-size:14px;pointer-events:auto;touch-action:none}
+  #jump{position:absolute;right:118px;bottom:53px;width:60px;height:60px;border-radius:50%;border:2px solid #fff9;background:#2d594de8;color:white;font-weight:700;font-size:12px;pointer-events:auto}
+  #message{position:absolute;top:105px;left:50%;transform:translateX(-50%);background:#07110dcc;padding:8px 12px;border-radius:10px;font-size:13px;white-space:nowrap}
+  #restart{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);display:none;pointer-events:auto;padding:12px 18px;border:0;border-radius:12px;background:#d4e4d7;color:#102019;font-weight:800}
+  @media(min-width:800px){#joy{width:140px;height:140px}#stick{left:44px;top:44px}}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="title">SHADOW WARRIORS</div>
+  <div id="stats">Health: <span id="health">100</span><br>Enemies defeated: <span id="kills">0</span></div>
+  <div id="help">Explore the forest<br>Move: left control / WASD<br>Attack: red button / Space</div>
+  <div id="message">Find the red-shadow enemies and tap ATTACK!</div>
+  <div id="joy"><div id="stick"></div></div>
+  <button id="jump">DODGE</button>
+  <button class="action" id="attack">ATTACK</button>
+  <button id="restart">PLAY AGAIN</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  if (!window.THREE) { $('message').textContent = 'Internet is needed to load the 3D engine. Refresh when connected.'; return; }
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9ab7b0);
+  scene.fog = new THREE.Fog(0x9ab7b0, 24, 95);
+  const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, .1, 250);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+  document.body.appendChild(renderer.domElement);
+  scene.add(new THREE.HemisphereLight(0xcfe6ed,0x283326,2.0));
+  const sun = new THREE.DirectionalLight(0xffe0b2,3.0); sun.position.set(-18,30,12); sun.castShadow=true; sun.shadow.mapSize.set(1024,1024); scene.add(sun);
+  const mat=(color,roughness=.9)=>new THREE.MeshStandardMaterial({color,roughness});
+  const groundMat=mat(0x3c5940), trunkMat=mat(0x514033), leafMat=mat(0x294b37), rockMat=mat(0x69766f), playerMat=mat(0x263b48), armorMat=mat(0x8c9b9b,.55), redMat=mat(0x9b2828), darkMat=mat(0x211d26), goldMat=mat(0xc8a45b,.45);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(220,220),groundMat); ground.rotation.x=-Math.PI/2; ground.position.y=-.12; ground.receiveShadow=true; scene.add(ground);
+  // Low-poly terrain details: mossy patches, stones, trees and distant ruins.
+  for(let i=0;i<180;i++){
+    const x=(Math.random()-.5)*180,z=(Math.random()-.5)*180;
+    const r=.3+Math.random()*1.2;
+    const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),i%3===0?rockMat:mat(i%2?0x465b43:0x52674b));
+    rock.position.set(x,r*.45,z); rock.scale.y=.45; rock.castShadow=true; rock.receiveShadow=true; scene.add(rock);
+  }
+  for(let i=0;i<100;i++){
+    const x=(Math.random()-.5)*170,z=(Math.random()-.5)*170;
+    if(Math.abs(x)<9&&Math.abs(z)<12) continue;
+    const h=3+Math.random()*4;
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.22,.38,h,7),trunkMat);
+    trunk.position.set(x,h/2,z); trunk.castShadow=true; scene.add(trunk);
+    const crown=new THREE.Mesh(new THREE.ConeGeometry(1.3+Math.random()*1.3,3+Math.random()*2,7),leafMat);
+    crown.position.set(x,h+1,z); crown.castShadow=true; scene.add(crown);
+  }
+  // A small broken stone gateway to give the world a destination.
+  for(let i=0;i<5;i++){
+    const pillar=new THREE.Mesh(new THREE.BoxGeometry(1.1,4.8,1.1),rockMat);
+    pillar.position.set(12+i*1.35,2.4,-22); pillar.rotation.z=(i%2?-.06:.04); pillar.castShadow=true; scene.add(pillar);
+  }
+  const beam=new THREE.Mesh(new THREE.BoxGeometry(7.2,.9,1.2),rockMat); beam.position.set(14.7,5,-22); beam.castShadow=true; scene.add(beam);
+  // Player character built from simple 3D parts.
+  const player=new THREE.Group(); scene.add(player); player.position.set(0,0,4);
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.48,.95,4,8),playerMat); body.position.y=1.15; body.castShadow=true; player.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.32,12,10),mat(0xc39a78)); head.position.y=2.05; head.castShadow=true; player.add(head);
+  const hood=new THREE.Mesh(new THREE.SphereGeometry(.36,12,8,0,Math.PI*2,0,Math.PI*.58),darkMat); hood.position.y=2.12; hood.castShadow=true; player.add(hood);
+  const shoulder=new THREE.Mesh(new THREE.BoxGeometry(1.25,.24,.58),armorMat); shoulder.position.set(0,1.65,0); shoulder.castShadow=true; player.add(shoulder);
+  const sword=new THREE.Mesh(new THREE.BoxGeometry(.12,1.1,.16),goldMat); sword.position.set(.72,1.2,.1); sword.rotation.z=-.25; sword.castShadow=true; player.add(sword);
+  const blade=new THREE.Mesh(new THREE.ConeGeometry(.1,.3,4),armorMat); blade.position.set(.72,.58,.1); blade.rotation.z=Math.PI; player.add(blade);
+  // Enemies.
+  const enemies=[];
+  function spawnEnemy(x,z){
+    const g=new THREE.Group(); g.position.set(x,0,z);
+    const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.8,3,7),redMat); torso.position.y=1.0; torso.castShadow=true; g.add(torso);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.28,10,8),darkMat); head.position.y=1.8; head.castShadow=true; g.add(head);
+    const eyeMat=new THREE.MeshStandardMaterial({color:0xff5a36,emissive:0x8b1600,emissiveIntensity:1.8});
+    for(const s of [-1,1]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.055,6,6),eyeMat);eye.position.set(s*.11,1.83,-.245);g.add(eye);}
+    scene.add(g); enemies.push({g,hp:3,alive:true,hit:0,attackCooldown:0,phase:Math.random()*6});
+  }
+  [[5,-7],[-7,-12],[11,7],[-13,4],[18,-10],[0,-19],[-19,-18],[21,15]].forEach(p=>spawnEnemy(...p));
+  let health=100,kills=0,attackTime=0,dodgeTime=0,gameOver=false;
+  const keys={}; addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.code==='Space'){e.preventDefault();doAttack();}});
+  addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+  let joyX=0,joyY=0,joyActive=false,joyId=null;
+  const joy=$('joy'),stick=$('stick');
+  function joyMove(e){const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const max=r.width*.32, len=Math.hypot(dx,dy);if(len>max){dx*=max/len;dy*=max/len;}joyX=dx/max;joyY=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`;}
+  joy.addEventListener('pointerdown',e=>{joyActive=true;joyId=e.pointerId;joy.setPointerCapture(joyId);joyMove(e);});
+  joy.addEventListener('pointermove',e=>{if(joyActive&&e.pointerId===joyId)joyMove(e);});
+  function joyEnd(){joyActive=false;joyX=joyY=0;stick.style.transform='translate(0,0)';}
+  joy.addEventListener('pointerup',joyEnd);joy.addEventListener('pointercancel',joyEnd);
+  function doAttack(){
+    if(gameOver||attackTime>0)return; attackTime=.42;
+    player.rotation.y += 0;
+    let target=null,best=3.5;
+    for(const en of enemies){if(!en.alive)continue;const d=en.g.position.distanceTo(player.position);if(d<best){const toward=new THREE.Vector3().subVectors(en.g.position,player.position).normalize();const facing=new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);if(facing.dot(toward)>-.25){best=d;target=en;}}}
+    if(target){target.hp--;target.hit=.22;target.g.position.add(new THREE.Vector3().subVectors(target.g.position,player.position).normalize().multiplyScalar(.7));if(target.hp<=0){target.alive=false;scene.remove(target.g);kills++;$('kills').textContent=kills; if(kills===enemies.length){$('message').textContent='Forest cleared! You are the Shadow Warrior.';}else $('message').textContent='Enemy defeated! Keep exploring.';}}
+    else $('message').textContent='Get closer to an enemy to hit it.';
+    setTimeout(()=>{if(!gameOver&&kills<enemies.length)$('message').textContent='Explore the forest and defeat every shadow.';},1200);
+  }
+  $('attack').addEventListener('pointerdown',e=>{e.preventDefault();doAttack();});
+  $('jump').addEventListener('pointerdown',e=>{e.preventDefault();if(!gameOver)dodgeTime=.32;});
+  $('restart').addEventListener('click',()=>location.reload());
+  const clock=new THREE.Clock();
+  const camOffset=new THREE.Vector3(0,5.4,8.5);
+  function animate(){
+    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);
+    if(!gameOver){
+      attackTime=Math.max(0,attackTime-dt);dodgeTime=Math.max(0,dodgeTime-dt);
+      let mx=joyX+(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);
+      let mz=joyY+(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);
+      const v=new THREE.Vector2(mx,mz);if(v.length()>1)v.normalize();
+      if(v.length()>.04){
+        const speed=dodgeTime>0?10:5.5;
+        // Camera-relative movement, facing direction of travel.
+        const forward=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);forward.y=0;forward.normalize();
+        const right=new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);right.y=0;right.normalize();
+        const dir=forward.multiplyScalar(-v.y).add(right.multiplyScalar(v.x)).normalize();
+        player.position.addScaledVector(dir,speed*dt);
+        player.rotation.y=Math.atan2(-dir.x,-dir.z);
+        body.position.y=1.15+Math.sin(performance.now()*.012)*.045;
+      }
+      player.position.x=THREE.MathUtils.clamp(player.position.x,-48,48);
+      player.position.z=THREE.MathUtils.clamp(player.position.z,-48,48);
+      for(const en of enemies){
+        if(!en.alive)continue;en.phase+=dt;
+        const d=en.g.position.distanceTo(player.position);
+        if(en.hit>0){en.hit-=dt;en.g.rotation.z=Math.sin(en.hit*30)*.16;}
+        else if(d<18&&d>1.45){const dir=new THREE.Vector3().subVectors(player.position,en.g.position).normalize();en.g.position.addScaledVector(dir,dt*(d<5?1.55:.85));en.g.rotation.y=Math.atan2(-dir.x,-dir.z);}
+        else if(d<=1.45){en.attackCooldown-=dt;if(en.attackCooldown<=0&&dodgeTime<=0){health=Math.max(0,health-7);$('health').textContent=health;en.attackCooldown=1.15;$('message').textContent='You were hit! Dodge or defeat the enemies.';if(health<=0){gameOver=true;$('message').textContent='You were defeated. Try again!';$('restart').style.display='block';}}}
+        en.g.position.y=Math.sin(en.phase*2)*.04;
+      }
+    }
+    const desired=player.position.clone().add(camOffset);
+    camera.position.lerp(desired,.09);camera.lookAt(player.position.x,player.position.y+1.15,player.position.z-1.2);
+    // Brief sword swing animation.
+    sword.rotation.z=attackTime>0?-.25-Math.sin((attackTime/.42)*Math.PI)*1.5:-.25;
+    renderer.render(scene,camera);
+  }
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  animate();
+})();
+</script>
+</body>
+</html>
